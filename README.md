@@ -9,7 +9,7 @@
 Add the following to your `Gemfile` and bundle...
 
 ```ruby
-gem "jekyll-contentful", "~> 0.0.1", git: 'https://github.com/crdschurch/jekyll-contentful.git'
+gem "jekyll-contentful", "~> 1.0.0", git: 'https://github.com/crdschurch/jekyll-contentful.git'
 ```
 
 Note, in order to support Contentful environents, this project requires [v2.6.0](https://github.com/contentful/contentful.rb/releases/tag/v2.6.0) or greater of the [Contentful gem](http://rubygems.org/gems/contentful).
@@ -30,30 +30,22 @@ For each collection you want persisted from Contentful, define the `id`, `body` 
 
 ```yml
 contentful:
-  content_types:
-    authors:
-      id: author
-      body: bio
-      filename: '{{ first_name }}-{{ last_name }}'
-      frontmatter:
-        entry_mappings:
-          title: displayName
-          images: images/url
-        other:
-          layout: author
-          draft: false
+  authors:
+    id: author
+    body: bio
+    filename: '{{ first_name }}-{{ last_name }}'
+    frontmatter:
+      title: displayName
+      images: images/url
 ```
 
 The `id` attribute specifies the ID for the Contentful content-type you'd like to associate with this collection. The `body` attribute specifies which field from your content-type should populate the content of resulting Markdown file.
 
 The `filename` attribute is a Liquid template that defines the value used when saving each document for this content-type (sans-filename, of course). This is handy if you need to format a string or date value in your filename, derived from your Contentful data. If the `filename` attribute is missing, it will first look for a `slug` field on the document and falls back to parameterizing the title field.
 
-The `frontmatter` section defines what fields we want to map from Contentful into our document frontmatter:
+The `frontmatter` section defines what fields we want to map from Contentful into our document frontmatter. Each key/value pair defines the fields/values that map a field from Contentful's API. By default the key is the desired frontmatter key, while the value is the field name in Contentful. In the example above, we want the value for field named `displayName` to be rendered in the frontmatter value named `title`.
 
-- `entry_mappings` is a list of target/src values that map a field from Contentful's API.
-    - By default the key is the desired frontmatter key, while the value is the field name in Contentful. (In the example above, we want the value for field named `displayName` to be rendered in the frontmatter value named `title`.)
-    - When the Contentful field is a reference, you can use a slash (`/`) to chain attributes together. (In the example above, `images` frontmatter will show the value for the `url` field for each associated image.)
-- The `other` section refers to additional attributes that you want hardcoded for each document.
+When the Contentful field is a reference, you can use a slash (`/`) to chain attributes together. (In the example above, `images` frontmatter will show the value for the `url` field for each associated image.)
 
 An example of what might be rendered based on the above configuration, looks like this...
 
@@ -63,11 +55,44 @@ title: Walter Sobchak
 images:
 - //some/image.png
 - //another/image.jpg
-layout: author
-draft: false
 ---
 
 Body content here.
+```
+
+## Associations
+
+This gem provides some utilities for setting up associations between your content models and a generator that will populate your collection pages with the associated objects.
+
+To use this feature, you need to specify the Contentful reference field name and what content-model(s) it is associated with under the `has_many` or `belongs_to` heading in `_config.yml`, like this...
+
+```yml
+contentful:
+  articles:
+    belongs_to:
+      author: author
+    ...
+  recipes:
+    belongs_to:
+      author: author
+    ...
+  authors:
+    has_many:
+      contributions:
+        - article
+        - recipe
+```
+
+When your site is built, the page object for every author will be prepopulated with that author's associated objects. You can access all of them in your templates, like so...
+
+```
+{{ page.has_many.contributions }}
+```
+
+Likewise, every article and recipe page will be prepopulated with their associated objects, like so...
+
+```
+{{ page.belongs_to.authors }}
 ```
 
 ## Environment Variables
@@ -87,6 +112,36 @@ Once configured as described above, you can run the following Jekyll subcommand 
 ```text
 $ bundle exec jekyll contentful
 ```
+
+You can reduce the volume of content returned from Contentful by specifying one or more collections on the command line and/or speciyfing a limit. The following example will return (up to) 10 records for both articles & authors collection...
+
+```
+$ bundle exec jekyll contentful --collections articles,authors --limit 10
+```
+
+### Sorting Contentful Queries
+
+When reducing the result-set returned from Contentful, it can be helpful to ensure you're only returning the most recent content from the API. To do this, you can specify a sort order that will be passed to the API when making queries for that type of content.
+
+The following example configuration will inform `jekyll-contentful` to query the API for the most recent entries, based on a date field called `published_at`...
+
+```
+contentful:
+  articles:
+    order: published_at desc
+    ...
+```
+
+If you need to query against a system field, such as `createdAt` or `updatedAt`, you can do it like so...
+
+```
+contentful:
+  articles:
+    order: sys.createdAt desc
+    ...
+```
+
+When coupled with flags like `--limit` and `--collections` you can substantially reduce the amount of content returned. This is particularly useful for speeding up builds while doing local development.
 
 ## License
 

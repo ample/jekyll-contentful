@@ -7,25 +7,25 @@ describe Jekyll::Contentful::Document do
 
   let(:article) {
     VCR.use_cassette('contentful/articles') do
-      return @client.send(:get_entries, 'articles').detect { |p| p.data.id == '5aYJRTYvBCc66UCEaQeuiE' }
+      return @client.send(:get_entries_of_type, 'articles').detect { |p| p.data.id == '5aYJRTYvBCc66UCEaQeuiE' }
     end
   }
 
   let(:podcast) {
     VCR.use_cassette('contentful/podcasts') do
-      return @client.send(:get_entries, 'podcasts').detect { |p| p.data.id == '5q50uJgqNUkqkMmaegK6M8' }
+      return @client.send(:get_entries_of_type, 'podcasts').detect { |p| p.data.id == '5q50uJgqNUkqkMmaegK6M8' }
     end
   }
 
   let(:series) {
     VCR.use_cassette('contentful/series') do
-      return @client.send(:get_entries, 'series').detect { |p| p.data.id == 'ElSFOutc0oA446C6Aw28S' }
+      return @client.send(:get_entries_of_type, 'series').detect { |p| p.data.id == 'ElSFOutc0oA446C6Aw28S' }
     end
   }
 
   let(:message) {
     VCR.use_cassette('contentful/messages') do
-      return @client.send(:get_entries, 'messages').detect { |p| p.data.id == '4xopQV6xOoIAAucCGE2OoC' }
+      return @client.send(:get_entries_of_type, 'messages').detect { |p| p.data.id == '4xopQV6xOoIAAucCGE2OoC' }
     end
   }
 
@@ -49,13 +49,6 @@ describe Jekyll::Contentful::Document do
     expect(article.send(:slug)).to eq('lorem-ipsum')
   end
 
-  it 'should return frontmatter extras' do
-    cfg = @site.config.dig('contentful', 'content_types', 'articles', 'frontmatter', 'other')
-    cfg.each do |mapped,src|
-      expect(article.send(:frontmatter_extras)[mapped]).to eq(src)
-    end
-  end
-
   it 'should add links to frontmatter' do
     expect(article.send(:frontmatter_links)).to eq({})
     expect(podcast.send(:frontmatter_links)).to eq({})
@@ -64,7 +57,7 @@ describe Jekyll::Contentful::Document do
   end
 
   it 'should return frontmatter entry mappings' do
-    cfg = @site.config.dig('contentful', 'content_types', 'articles', 'frontmatter', 'entry_mappings')
+    cfg = @site.config.dig('contentful', 'articles', 'frontmatter')
     cfg.each do |mapped,src|
       expect(article.send(:frontmatter_entry_mappings)[mapped]).to eq(src)
     end
@@ -85,7 +78,7 @@ describe Jekyll::Contentful::Document do
   it 'should return frontmatter' do
     yml = article.send(:frontmatter)
     expect(yml).to be_instance_of(Hash)
-    %w(layout title image author topic date slug).each do |k|
+    %w(title image topic date slug).each do |k|
       expect(yml.keys).to include(k)
     end
   end
@@ -106,12 +99,14 @@ describe Jekyll::Contentful::Document do
         "tags"=>"tags"}
       allow(article).to receive(:frontmatter_entry_mappings).and_return(frontmatter)
       allow(article.data).to receive(:title).and_return('liquid test')
+      article.reload!
       expect(article.send(:frontmatter)['title']).to eq('Liquid test')
     end
 
     it 'should map a many reference to an array of values' do
       mappings = podcast.send(:frontmatter_entry_mappings)
       allow(mappings).to receive(:authors).and_return('author/full_name')
+      article.reload!
       expect(podcast.data.author.class).to eq(Array)
       expect(podcast.send(:frontmatter)['authors']).to include(podcast.data.author.first.full_name)
     end
@@ -119,19 +114,22 @@ describe Jekyll::Contentful::Document do
     it 'should support individual fields' do
       title = 'Ever thus to deadbeats, Lebowski'
       allow(article.data).to receive(:title).and_return(title)
+      article.reload!
       expect(article.send(:frontmatter)['title']).to eq(title)
     end
 
     it 'should support nested attributes' do
       mappings = article.send(:frontmatter_entry_mappings)
-      allow(mappings).to receive(:author).and_return('author/full_name')
+      allow(mappings).to receive(:author_name).and_return('author/full_name')
       author_name = 'Walter Sobchak'
       allow(article.data.author).to receive(:full_name).and_return(author_name)
-      expect(article.send(:frontmatter)['author']).to be(author_name)
+      article.reload!
+      expect(article.send(:frontmatter)['author_name']).to be(author_name)
     end
 
     it 'should not raise exception if mapped field doesn\'t actually exist in CF payload' do
       allow(article).to receive(:frontmatter_entry_mappings).and_return({ "foo" => "bar" })
+      article.reload!
       expect{ article.send(:frontmatter) }.to_not raise_error
     end
 
@@ -146,6 +144,7 @@ describe Jekyll::Contentful::Document do
     it 'should not render properties if they are not returned from CF' do
       expect(article.send(:frontmatter).keys).to include('slug')
       article.data.fields.delete(:slug)
+      article.reload!
       expect(article.send(:frontmatter).keys).to_not include('slug')
     end
 
